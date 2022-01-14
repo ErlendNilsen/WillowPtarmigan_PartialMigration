@@ -11,6 +11,7 @@ library(rptR)
 library(AICcmodavg)
 library(ggpubr)
 library(ggalluvial)
+library(mpcmp)
 
 ##########################################################################################################
 ##########################################################################################################
@@ -22,12 +23,14 @@ library(ggalluvial)
 
 #### Revision R2;
 # Present analyses based on winter-summer transition first year after capture in main text,
+# present analyses of all data in Appendixes
+# Updated figure 3 with only first year of data from spring transition
 
 
 #########################################################################################################
 #Loading files - and mutating some variables;
 
-ndft<- as_tibble(read.csv(file= here("data/ndft.csv"), header = TRUE, sep=",")) #Partial migration data
+ndft<- as_tibble(read.csv(file= here("ndft.csv"), header = TRUE, sep=",")) #Partial migration data
 
 ndft <- ndft %>% mutate(dist2=dist/1000,
                         Id=as.factor(RingNR),
@@ -47,16 +50,17 @@ ndft2 <- ndft %>% group_by(RingNR) %>%
 #################################################################################################
 ## Reading the nest data file;
 
-ns <- as_tibble(read.csv(file= here("data/NestSuccess_rev2.csv"), header = TRUE, sep=",")) #Nesting Success data
+ns <- as_tibble(read.csv(file= here("NestSuccess_rev2.csv"), header = TRUE, sep=",")) #Nesting Success data
 
 ns <- ns %>% mutate(Id=as.factor(RingNR),
                     Weigth2=scale(Weigth, center=TRUE))
 
-## Only firt year after capture
+## Only first year after capture
 
 ns2 <- ns %>% group_by(RingNR) %>%
   slice(which.min(Year))
 
+#####################################################################
 ## Assessing difference in altitude between migrants and residents;
 
 M1 <- lm(alt_dem10~as.factor(BOL)-1, data=ns)
@@ -64,13 +68,13 @@ M1b <- lm(alt_dem10~as.factor(BOL), data=ns)
 
 M2 <- lm(alt_dem10~1, data=ns)
 
-AICc(c(M1, M2))
+summary(M1b)
 
 ########################################################################################################
 ########################################################################################################
 ### summary statistics:
 
-## N_birds in main analysis (only first year of data - only winter to summer transition)
+## Numbers in table 1: Not made tidy and nice here....
 
 N_birds_main <- ndft2 %>% group_by(Year) %>%
                 summarize(Number=n())
@@ -84,7 +88,8 @@ N_nests_all <- ns %>% group_by(Year) %>%
 N_nests_main <- ns2 %>% group_by(Year) %>%
   summarize(Number=n())
 
-### Table 2 - updated with only first year of data;
+#######################################################
+#### Number in table 2: Not made tidy and nice here....
 
 N_migrants_main <- ndft2 %>% group_by(Year, BOL) %>%
                   summarize(Number=n())
@@ -104,10 +109,11 @@ N_migrants_main5 <- ndft2 %>% filter(BOL==1) %>% group_by(Year) %>%
 Table2 <- N_migrants_main4 %>% left_join(., N_migrants_main5) %>% left_join(., N_migrants_main3) %>%
           mutate(Perc_migratory=Migrants/Total)
 
+################################################################################
+###############################################################################
+### Numbers in table 3: Not made tidy and nice here.
 
-### Table 3:
-
-## Weigth:
+## Weight:
 
 Weigth_table <- ndft2 %>% group_by(Age) %>%
                 mutate(vekt2=vekt*100) %>%
@@ -116,6 +122,8 @@ Weigth_table <- ndft2 %>% group_by(Age) %>%
                           Median=median(vekt2),
                           Max=max(vekt2),
                           N=n())
+
+## Movement:
 
 Movement_table <- ndft2 %>% group_by(Age) %>%
   summarize(Min=min(dist2),
@@ -129,8 +137,7 @@ Movement_table <- ndft2 %>% group_by(Age) %>%
 ########################################################################################################
 ### Testing prediction 1 a (P(migration))
 
-#################################################################################################
-##### Including birds only first year after capture, as suggested by referee on V1
+##### Including birds only first year after capture
 #####
 
 GLM1 <- glm(BOL ~ Age, family = "binomial", data = ndft2)
@@ -155,16 +162,9 @@ GLMM4 <- glmmTMB(BOL ~ Weigth2 * Age + (1 | Id ), family = "binomial", data = nd
 GLMM5 <- glmmTMB(BOL ~ 1 + (1 | Id ), family = "binomial", data = ndft)
 
 cand_1 <- list(GLMM1, GLMM2, GLMM3, GLMM4, GLMM5)
+
 ## Table A5
 AICcmodavg::aictab(cand_1,modnames=c("Age", "Weigth", "Weigth+Age", "Weigth*Age", "Null"))
-
-
-################################################################################################
-#### Diagnostic;
-
-simulationOutputGLMM4 <- simulateResiduals(fittedModel = GLMM4, n=1000)
-testUniformity(simulationOutput = simulationOutputGLMM4)
-
 
 #################################################################################################
 #################################################################################################
@@ -179,6 +179,7 @@ LM4 <- lm(log(dist3) ~ Weigth2 * Age, data = ndft2)
 LM5 <- lm(log(dist3) ~ 1, data = ndft2)
 
 cand_1 <- list(LM1, LM2, LM3, LM4, LM5)
+
 ## Table 5
 AICcmodavg::aictab(cand_1, modnames=c("Age", "Weigth", "Weigth+Age", "Weigth*Age", "Null"))
 
@@ -195,16 +196,10 @@ cand_1 <- list(LMM1, LMM2, LMM3, LMM4, LMM5)
 ## Table A6
 AICcmodavg::aictab(cand_1, modnames=c("Age", "Weigth", "Weigth+Age", "Weigth*Age", "Null"))
 
-################################################################################################
-##### Diagnostics
-
-simulationOutputLMM4 <- simulateResiduals(fittedModel = LMM4, n=1000)
-testUniformity(simulationOutput = simulationOutputLMM4)
-
-
 #################################################################################################
 #################################################################################################
 ## Prediction 2: Repeatability in movement (migration) behaviour
+## Including only birds with > 1 observation
 
 temp <- ndft %>% group_by (RingNR) %>%
   summarize(antall=n()) %>%
@@ -217,24 +212,14 @@ summary(Agreement_rep)
 Adjusted_rep <- rptGaussian(log(dist3) ~  Age + (1 | Id ), grname = "Id", data = temp)
 summary(Adjusted_rep)
 
-##################################################################################
-### Using binial response - not reported due to model convergence failure
-Agreement_repB <- rpt(BOL ~  1 + (1 | Id ), grname = "Id", data = temp, datatype="Binary")
-summary(Agreement_repB)
-Adjusted_repB <- rpt(BOL ~  Age + (1 | Id ), grname = "Id", data = temp, datatype="Binary")
-summary(Adjusted_repB)
-
 
 #################################################################################################
 #################################################################################################
 ### Testing prediction 3a; about clutch size
-################################################################################################
 #### Only first year of data;
 
 ################################################################################################
-### mpcmp::glm.cmp, due to strong underdispersion (which is common in data on clutch size)
-
-#ns3 <- ns2 %>% filter(!is.na(N_egg))
+### Using mpcmp::glm.cmp, due to strong underdispersion. see ms for a justification.
 
 
 COM_glm1 <- mpcmp::glm.cmp(N_egg ~ 1, data = ns2)
@@ -246,8 +231,7 @@ COM_glm6 <- mpcmp::glm.cmp(N_egg ~ Age + BOL, data = ns2)
 COM_glm7 <- mpcmp::glm.cmp(N_egg ~ Weigth2 + BOL, data = ns2)
 COM_glm8 <- mpcmp::glm.cmp(N_egg ~ Weigth2 + BOL + Age, data = ns2)
 
-##Amnually copute AICc and associated stats, as AICcmodavg::aictab is not not implemented for
-## mpcmp::glm.cmp
+## Manually copute AICc and associated stats, as AICcmodavg::aictab is not not implemented for mpcmp::glm.cmp yet
 
 cand_2 <- tibble(Mod_names=c("Null", "Age", "Weigth", "BOL", "Age+Weigth",
                              "Age+BOL", "Weigth+BOL", "Weigth+BOL+Age"),
@@ -283,18 +267,9 @@ cand_2 <- list(tt1,tt2,tt3,tt4,tt5, tt6, tt7, tt8)
 AICcmodavg::aictab(cand_2, modnames=c("Null", "Age", "Weigth", "BOL", "Age+Weigth",
                                       "Age+BOL", "Weigth+BOL", "Weigth+BOL+Age"))
 
-################################################################################################
-##### Diagnostics
-
-simulationOutputBS1 <- simulateResiduals(fittedModel = tt2, n=1000)
-testUniformity(simulationOutput = simulationOutputBS1)
-
-
 #################################################################################################
 ### Testing prediction 3b;
-
-################################################################################################
-##### Using only first year of data
+### Using only first year of data
 
 N1 <- glm(Nest_state ~ 1, data = ns2, family = "binomial")
 N2 <- glm(Nest_state ~ Age, data = ns2, family = "binomial")
@@ -306,6 +281,7 @@ N7 <- glm(Nest_state ~ Weigth2 + BOL, data = ns2, family = "binomial")
 N8 <- glm(Nest_state ~ Weigth2 + BOL + Age, data = ns2, family = "binomial")
 
 cand_2 <- list(N1, N2,N3, N4, N5, N6, N7, N8)
+
 # Table 7
 AICcmodavg::aictab(cand_2,  modnames=c("Null", "Age", "Weigth", "BOL", "Age+Weigth",
                                        "Age+BOL", "Weigth+BOL", "Weigth+BOL+Age"))
@@ -326,36 +302,12 @@ cand_2 <- list(NS1, NS2,NS3, NS4, NS5, NS6, NS7, NS8)
 # Table A8
 AICcmodavg::aictab(cand_2,  modnames=c("Null", "Age", "Weigth", "BOL", "Age+Weigth",
                                        "Age+BOL", "Weigth+BOL", "Weigth+BOL+Age"))
-################################################################################################
-##### Diagnostics
-
-simulationOutputNS1 <- simulateResiduals(fittedModel = NS1, n=1000)
-testUniformity(simulationOutput = simulationOutputNS1)
-
-################################################################################################
-##### Using only first year of data
-
-N1 <- glm(Nest_state ~ 1, data = ns2, family = "binomial")
-N2 <- glm(Nest_state ~ Age, data = ns2, family = "binomial")
-N3 <- glm(Nest_state ~ Weigth2, data = ns2, family = "binomial")
-N4 <- glm(Nest_state ~ BOL, data = ns2, family = "binomial")
-N5 <- glm(Nest_state ~ Age + Weigth2, data = ns2, family = "binomial")
-N6 <- glm(Nest_state ~ Age + BOL, data = ns, family = "binomial")
-N7 <- glm(Nest_state ~ Weigth2 + BOL, data = ns2, family = "binomial")
-N8 <- glm(Nest_state ~ Weigth2 + BOL + Age, data = ns2, family = "binomial")
-
-cand_2 <- list(N1, N2,N3, N4, N5, N6, N7, N8)
-# Table 7
-AICcmodavg::aictab(cand_2,  modnames=c("Null", "Age", "Weigth", "BOL", "Age+Weigth",
-                                       "Age+BOL", "Weigth+BOL", "Weigth+BOL+Age"))
-
 
 #################################################################################################
 #################################################################################################
 #################################################################################################
 #Plotting FIGURE 3 in manuscript;
 ### Revision: Only include winter - to - summer transition & only first year of data
-
 
 
 ndft2 <- ndft2 %>% mutate(
